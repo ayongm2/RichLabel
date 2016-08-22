@@ -35,8 +35,8 @@
 		float 	scale 		缩放比例
 		color4 	shadow_color 启用阴影,阴影颜色,默认为cc.c4b(0, 0, 0, 255)
 		int 	shadow_blur 启用阴影,blur值,默认为0
-		int 	shadow_offset_x 	启用阴影,x轴偏移值,默认为2
-		int 	shadow_offset_y 	启用阴影,y轴偏移值,默认为-2
+		int 	shadow_x 	启用阴影,x轴偏移值,默认为2
+		int 	shadow_y 	启用阴影,y轴偏移值,默认为-2
 		color4 	outline_color 启用outline,颜色,默认为cc.c4b(0, 0, 0, 255)
 		int 	outline_size 启用outline,size值,默认为2
 	d.图片标签 <image key=value ... >image path</image>
@@ -63,7 +63,8 @@
 		string 	valign 			垂直对齐方式, top center bottom, 默认bottom
 		string 	align 			水平对齐方式, left center right, 默认left
 	2.添加元素 insertElement insertText insertImage insertCustom
-		第一个参数为table,用来描述此元素属性定义,可参看上面1.c和1.d,有些地方的设定略有不同,可参看例子,但有个type属性来说明是什么类型元素,text时可不设置这个type
+		第一个参数为table,用来描述此元素属性定义,可参看上面1.c和1.d,有些地方的设定略有不同,可参看例子,
+			但有个type属性来说明是什么类型元素,text时可不设置这个type
 		第二个参数是插入位置,不设置则加入到末尾
 	3.移除元素 removeElement
 	4.一定要手动refresh下
@@ -117,9 +118,8 @@ e.g.
 local RichLabel = class("RichLabel", function (  )
 	return display.newNode()
 end)
-
 -- https://github.com/tst2005/lua-utf8
-local ustring = assert(require("fw.utf8"))
+local ustring = assert(import(".utf8"))
 
 local cc = cc
 local math = assert(require("math"))
@@ -140,10 +140,14 @@ local string_lower = string.lower
 local tostring = tostring
 local ipairs = ipairs
 local tonumber = tonumber
-local util_each = util.each
-local util_filter = util.filter
-local isstring = isstring
-local isnumber = isnumber
+local util_each = function ( fun, params )
+	table.walk(params, fun)
+end
+local util_filter = function ( fun, params )
+	table.filter(params, fun)
+end
+local isstring = function(v) return "string" == type(v) end
+local isnumber = function(v) return "number" == type(v) end
 
 RichLabel.TYPE_TEXT = "text"
 RichLabel.TYPE_IMAGE = "image"
@@ -163,8 +167,6 @@ function RichLabel:ctor( params )
 		params = nil
 	end
 	self.params_ = params or {}
-	self:setCascadeOpacityEnabled(true)
-    self:setCascadeColorEnabled(true)
 	-- 你第一次肯定就是脏的
 	self.formatTextDirty_ = true
 	self.leftSpaceWidth_ = 0
@@ -183,8 +185,6 @@ function RichLabel:ctor( params )
 	self.elementsParams_ = self.params_.elementsParams or {}
 	-- 元素所属的父容器
 	self.elementRenderersContainer_ = display.newNode():addTo(self, 0, -1)
-	self.elementRenderersContainer_:setCascadeOpacityEnabled(true)
-    self.elementRenderersContainer_:setCascadeColorEnabled(true)
 	-- 进行格式字符处理
 	if self.text_ then
 		self:parseString_(self.text_) 
@@ -215,11 +215,18 @@ function RichLabel:bindParams_( node, params )
 		node:setOpacity(params.opacity)
 	end
 	if params.clickable then 
-		node:bindClick(function ( node )
-			if self.onClick_ then 
-				self.onClick_(node, params)
-			end	
-		end)
+		node:setTouchEnabled(true)
+	    node:addNodeEventListener(cc.NODE_TOUCH_EVENT, function(event)
+	        if event.name == "ended" then
+	            if self.onClick_ then
+	            	local point = cc.p(event.x, event.y)
+	            	if node:getCascadeBoundingBox():containsPoint(point) then 
+	            		self.onClick_(node, params)
+	            	end
+	            end
+	        end
+	        return true
+	    end)
 	end
 	if params.tag then 
 		node:setTag(params.tag)
@@ -259,7 +266,21 @@ function RichLabel:createTTFLabel_( params )
 	if not params.color then 
 		params.color = self.fontColor_
 	end
-	return widget.newTTFLabel(params)
+	local label = cc.ui.UILabel.new(params)
+    if params.shadow then
+        local color4 = params.shadow.color or cc.c4b(0, 0, 0, 255)
+        local offset = params.shadow.offset or {}
+        if not offset.width then offset.width = 2 end
+        if not offset.height then offset.height = -2 end
+        local blur = params.shadow.blur or 0
+        label:enableShadow(color4, offset, blur)
+    end
+    if params.outline then 
+        local color4 = params.outline.color or cc.c4b(0, 0, 0, 255)
+        local size = params.outline.size or 2
+        label:enableOutline(color4, size)
+    end
+    return label
 end
 --[[--
 
@@ -316,7 +337,7 @@ end
 
 --]]
 function RichLabel:handleImageRenderer_( elementParams )
-	local imageRenderer = widget.newSprite(elementParams)
+	local imageRenderer = display.newSprite(elementParams.file)
 	self:handleCustomRenderer_(imageRenderer, elementParams)
 end
 --[[--
@@ -350,7 +371,7 @@ function RichLabel:formatRenderers_()
 		local row = self.elementRenders_[1]
 		local nextPosX = 0
 		util_each(function ( element, index )
-			element:anchor(display.BOTTOM_LEFT)
+			element:align(display.BOTTOM_LEFT)
 				   :pos(nextPosX, 0)
 			self.elementRenderersContainer_:add(element, 1)
 			local elementSize = element:getContentSize()
@@ -368,7 +389,7 @@ function RichLabel:formatRenderers_()
 				posY = newContentSizeHeight / 2
 			end
 			util_each(function ( element, index )
-				element:anchor(anchor):pos(element:getPositionX(), posY)
+				element:align(anchor):pos(element:getPositionX(), posY)
 			end, row)
 		end
 
@@ -417,7 +438,7 @@ function RichLabel:formatRenderers_()
 				nextPosX = (newContentSizeWidth - maxWidths[index]) / 2
 			end
 			util_each(function ( element, elementIndex )
-				element:anchor(anchor):pos(nextPosX, posY)
+				element:align(anchor):pos(nextPosX, posY)
 				self.elementRenderersContainer_:add(element, 1)
 				nextPosX = nextPosX + element:getContentSize().width * element:getScale()
 			end, elementRender)
@@ -526,7 +547,7 @@ end
 
 插入元素属性,用以顺序创建对应控件
 
-@param table elementParams 元素属性, 参看顶部说明及例子
+@param table elementParams 元素属性
 @param int index 	插入下标,无则加入最后一项
 
 @return self
@@ -616,7 +637,7 @@ function RichLabel:refresh()
 				if not elementType or RichLabel.TYPE_TEXT == elementType then 
 					elementRenderer = self:createTTFLabel_(elementParams)
 				elseif RichLabel.TYPE_IMAGE == elementType then 
-					elementRenderer = widget.newSprite(elementParams)
+					elementRenderer = display.newSprite(elementParams.file)
 				elseif RichLabel.TYPE_CUSTOM == elementType then 
 					elementRenderer = elementParams.node
 				end
@@ -670,13 +691,15 @@ end
 --]]
 function RichLabel:getElements( tag )
 	local numberflag = isnumber(tag)
-	return util_filter(function ( node, index )
+	local result = self.elementRenderersContainer_:getChildren()
+	util_filter(function ( node, index )
 		if numberflag then 
 			return node:getTag() == tag
 		else
 			return node:getName() == tag
 		end
-	end, self.elementRenderersContainer_:getChildren())
+	end, result)
+	return result
 end
 --[[--
 
