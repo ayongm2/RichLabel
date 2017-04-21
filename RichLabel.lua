@@ -146,6 +146,9 @@ end
 local util_filter = function ( fun, params )
 	table.filter(params, fun)
 end
+local function table_isnotempty( t )
+	return next(t) ~= nil
+end
 local isstring = function(v) return "string" == type(v) end
 local isnumber = function(v) return "number" == type(v) end
 
@@ -160,6 +163,8 @@ RichLabel.ALIGN_LEFT = "left"
 RichLabel.ALIGN_CENTER = "center"
 RichLabel.ALIGN_RIGHT = "right"
 
+local CC_SIZE_ZERO = cc.size(0, 0)
+
 function RichLabel:ctor( params )
 	if isstring(params) then 
 		-- 处理下只传递格式字符进来,简化创建
@@ -171,12 +176,15 @@ function RichLabel:ctor( params )
 	self.formatTextDirty_ = true
 	self.leftSpaceWidth_ = 0
 
-	self.params_.size = self.params_.size or CCSizeZero
+	self.params_.size = self.params_.size or CC_SIZE_ZERO
 	self.fontSize_ = self.params_.fontSize -- or display.DEFAULT_TTF_FONT_SIZE
 	self.font_ = self.params_.font -- or display.DEFAULT_TTF_FONT
 	self.fontColor_ = self.params_.fontColor -- or display.COLOR_WHITE
 	self.verticalSpace_ = self.params_.verticalSpace or 0
-	self.ignoreSize_ = ifnil(self.params_.ignoreSize, not (self.params_.size.width > 0))
+	-- self.ignoreSize_ = ifnil(self.params_.ignoreSize, not (self.params_.size.width > 0))
+	if self.ignoreSize_ == nil then 
+		self.ignoreSize_ = not (self.params_.size.width > 0)
+	end
 	self.valign_ = string_lower(self.params_.valign or RichLabel.VALIGN_BOTTOM)
 	self.align_ = string_lower(self.params_.align or RichLabel.ALIGN_LEFT)
 
@@ -190,7 +198,7 @@ function RichLabel:ctor( params )
 		self:parseString_(self.text_) 
 	end
 	-- 刷新显示去吧~~~
-	if table.isnotempty(self.elementsParams_) then 
+	if table_isnotempty(self.elementsParams_) then 
 		self:refresh()
 	end
 end
@@ -465,7 +473,7 @@ end
 
 --]]
 function RichLabel:pushToContainer_( elementRenderer )
-	if table.isnotempty(self.elementRenders_) then 
+	if table_isnotempty(self.elementRenders_) then 
 		table_insert(self.elementRenders_[#self.elementRenders_], elementRenderer)
 	end
 end
