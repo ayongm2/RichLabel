@@ -193,6 +193,8 @@ function RichLabel:ctor( params )
 	self.elementsParams_ = self.params_.elementsParams or {}
 	-- 元素所属的父容器
 	self.elementRenderersContainer_ = display.newNode():addTo(self, 0, -1)
+	self.elementRenderersContainer_:ignoreAnchorPointForPosition(false)
+	self.elementRenderersContainer_:setAnchorPoint(display.ANCHOR_POINTS[display.CENTER])
 	-- 进行格式字符处理
 	if self.text_ then
 		self:parseString_(self.text_) 
@@ -454,7 +456,9 @@ function RichLabel:formatRenderers_()
 	end
 
 	self.elementRenders_ = {}
-	self.elementRenderersContainer_:alignParent(display.CENTER)
+	-- self.elementRenderersContainer_:alignParent(display.CENTER)
+	local size = self:getContentSize()
+	self.elementRenderersContainer_:pos(size.width / 2, size.height / 2)
 end
 --[[--
 
