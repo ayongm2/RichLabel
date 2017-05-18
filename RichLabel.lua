@@ -130,6 +130,7 @@ local table_insert = table.insert
 local table_remove = table.remove
 local string = assert(require("string"))
 local string_gsub = string.gsub
+local string_match = string.match
 local string_find = string.find
 local string_byte = string.byte
 local string_len = string.len
@@ -143,8 +144,13 @@ local tonumber = tonumber
 local util_each = function ( fun, params )
 	table.walk(params, fun)
 end
+local util_map = function ( fun, params )
+	table.map(params, fun)
+	return params
+end
 local util_filter = function ( fun, params )
 	table.filter(params, fun)
+	return params
 end
 local isstring = function(v) return "string" == type(v) end
 local isnumber = function(v) return "number" == type(v) end
@@ -159,6 +165,15 @@ RichLabel.VALIGN_BOTTOM = "bottom"
 RichLabel.ALIGN_LEFT = "left"
 RichLabel.ALIGN_CENTER = "center"
 RichLabel.ALIGN_RIGHT = "right"
+
+local ESCAPE_CHARS = {
+    ['&']     = "&amp;",
+    ['<']     = "&lt;",
+    ['>']     = "&gt;",
+    ["&amp;"] = "&",
+    ["&lt;"]  = "<",
+    ["&gt;"]  = ">",
+}
 
 function RichLabel:ctor( params )
 	if isstring(params) then 
@@ -692,7 +707,7 @@ end
 function RichLabel:getElements( tag )
 	local numberflag = isnumber(tag)
 	local result = self.elementRenderersContainer_:getChildren()
-	util_filter(function ( node, index )
+	result = util_filter(function ( node, index )
 		if numberflag then 
 			return node:getTag() == tag
 		else
@@ -733,11 +748,7 @@ end
 
 --]]
 local function encodeText_( text )
-	local result = text
-	result = string_gsub(result, "&", "&amp;")
-	result = string_gsub(result, [[\<]], "&lt;")
-	result = string_gsub(result, [[\>]], "&gt;")
-	return result
+	return string_gsub(text, '[&<>]', ESCAPE_CHARS)
 end
 --[[--
 
@@ -749,17 +760,9 @@ end
 
 --]]
 local function decodeText_( text )
-	local result = text
-	if string_find(result, "&lt;") then 
-		result = string_gsub(result, "&lt;", "<")
-	end
-	if string_find(result, "&gt;") then 
-		result = string_gsub(result, "&gt;", ">")
-	end
-	if string_find(result, "&amp;") then 
-		result = string_gsub(result, "&amp;", "&")
-	end
-	return result
+	return string_gsub(text, "&%a-;", function ( str )
+        return ESCAPE_CHARS[str] or str
+    end)
 end
 --[[--
 
@@ -771,23 +774,16 @@ hex颜色值转换在cc.c3b或cc.c4b
 
 --]]
 local function convertColor_( color )
-	local startIndex = 1
-	-- #字号
-	if 35 == string_byte(color) then 
-		startIndex = 2
-	end
-	local function calPure_()
-		local result = string_sub(color, startIndex, startIndex + 1)
-		startIndex = startIndex + 2
-		return checkint("0x" .. result)
-	end
-	local result = {}
-	if 8 <= string_len(color) then 
-		result[#result + 1] = calPure_() -- a
-	end
-	result[#result + 1] = calPure_() -- r
-	result[#result + 1] = calPure_() -- g
-	result[#result + 1] = calPure_() -- b
+	local result
+    color = string_gsub(color, "#", "")
+    if string_len(color) == 8 then
+        result = {string_match(color, "(%w%w)(%w%w)(%w%w)(%w%w)")}
+    else
+        result = {string_match(color, "(%w%w)(%w%w)(%w%w)")}
+    end
+    result = util_map(function ( v, k )
+        return tonumber(v, 16) or 0
+    end, result)
 	if 3 < #result then 
 		return cc.c4b(result[2], result[3], result[4], result[1])
 	else
